@@ -1,0 +1,132 @@
+---
+description: 
+globs: 
+alwaysApply: true
+---
+# Testing Guide
+
+This guide provides instructions and conventions for writing and running tests in this HONC project. We use [Vitest](https://vitest.dev/) as our test runner and `@cloudflare/vitest-pool-workers` to simulate the Cloudflare Workers environment, including D1 database interactions.
+
+## Testing Stack
+
+*   **Test Runner:** [Vitest](https://vitest.dev/)
+*   **Environment Simulation:** [`@cloudflare/vitest-pool-workers`](https://github.com/cloudflare/workers-sdk/tree/main/packages/vitest-pool-workers)
+*   **Database:** Cloudflare D1 (simulated via Miniflare within the test pool)
+*   **ORM:** Drizzle
+
+## Running Tests
+
+Use pnpm to run the test scripts defined in `package.json`. By default, `pnpm test` executes Vitest in **single-run mode**, which runs all tests once and then exits. This is the required mode for automated processes, CI/CD pipelines, or when interacting with AI agents, as it ensures the test process completes and reports results.
+
+```bash
+# Run all tests (single-run mode - preferred for automation)
+pnpm test
+
+# Run specific test file(s) (single-run mode)
+pnpm test src/handlers/users.test.ts
+
+# Run tests matching a pattern (single-run mode)
+pnpm test my-feature
+
+# Run tests in watch mode (for interactive development ONLY)
+pnpm test --watch 
+# Note: Watch mode continuously monitors for file changes and re-runs tests. 
+# It does NOT exit automatically and should NOT be used in automated scripts or by AI agents.
+```
+
+*(Note: Assumes a `"test": "vitest"` script exists in `package.json`)*
+
+## Configuration
+
+*   **`package.json`**: Contains the test script (`"test": "vitest"`) and necessary development dependencies:
+    ```json
+    "devDependencies": {
+      "vitest": "^1.3.0", // Or latest version
+      "@cloudflare/vitest-pool-workers": "^0.2.0", // Or latest version
+      "@cloudflare/workers-types": "...",
+      "wrangler": "...",
+      "drizzle-kit": "...",
+      // ... other dependencies
+    }
+    ```
+*   **`vitest.config.ts`**: Configures Vitest to use the Cloudflare worker pool. Key aspects include:
+    *   Using `defineWorkersProject` to initialize the Cloudflare environment.
+    *   Reading D1 migrations from `drizzle/migrations` using `readD1Migrations`.
+    *   Configuring `poolOptions.workers.miniflare` to:
+        *   Set compatibility date and flags (e.g., `nodejs_compat`).
+        *   Define the D1 database binding (e.g., `d1Databases: ['DB']`).
+        *   Bind migrations to the test environment.
+    *   Specifying a setup file (e.g., `test/apply-migrations.ts`) to prepare the test database.
+
+    ```typescript
+    // Example vitest.config.ts structure
+    import path from 'node:path'
+    import { defineWorkersProject, readD1Migrations } from '@cloudflare/vitest-pool-workers/config'
+
+    export default defineWorkersProject(async () => {
+      const migrationsPath = path.join(__dirname, 'drizzle/migrations')
+      const migrations = await readD1Migrations(migrationsPath)
+      return {
+        test: {
+          // Run migrations before tests
+          setupFiles: ['./test/apply-migrations.ts'],
+          globals: true,
+          poolOptions: {
+            workers: {
+              singleWorker: true,
+              miniflare: {
+                compatibilityDate: '2024-04-01', // Use project's date
+                compatibilityFlags: ['nodejs_compat'],
+                // Make D1 binding available in tests
+                d1Databases: ['DB'],
+                // Bind migrations for setup
+                bindings: { TEST_MIGRATIONS: migrations }
+              }
+            }
+          }
+        }
+      }
+    })
+    ```
+
+*   **`test/apply-migrations.ts`** (Example Setup File): This file typically uses the `TEST_MIGRATIONS` binding to run the D1 migrations against the in-memory test database before the test suite starts.
+
+## Writing Tests
+
+*   **Location:** Place test files alongside the code they are testing, using the `.test.ts` suffix (e.g., `src/handlers/users.handler.ts` and `src/handlers/users.test.ts`). Alternatively, a central `test/` directory can be used.
+*   **Structure:** Use standard Vitest syntax (`describe`, `it`, `expect`).
+*   **Accessing Environment:** Within your tests, you can access the Cloudflare environment bindings (like the D1 database) provided by the worker pool. You'll typically import your Hono app instance and make requests to it using Vitest's testing utilities or standard `fetch`. The D1 instance used by the app within the test will be the simulated one.
+
+    ```typescript
+    import { describe, it, expect } from 'vitest';
+    import app from '../src/index'; // Assuming your Hono app is exported from src/index.ts
+
+    describe('GET /users/:id', () => {
+      it('should return a user if found', async () => {
+        // Arrange: Seed data if necessary (migrations run automatically)
+        // const db = ... // Access DB binding if needed directly, though often test via app requests
+
+        // Act: Make a request to the Hono app running in the simulated env
+        const req = new Request('http://localhost/users/1');
+        const res = await app.request(req);
+
+        // Assert
+        expect(res.status).toBe(200);
+        const body = await res.json();
+        expect(body.id).toBe(1);
+        // ... more assertions
+      });
+
+      it('should return 404 if user not found', async () => {
+        const req = new Request('http://localhost/users/999');
+        const res = await app.request(req);
+        expect(res.status).toBe(404);
+      });
+    });
+    ```
+
+## Database Migrations
+
+*   Migrations defined in the `drizzle/migrations` directory are automatically read by the configuration in `vitest.config.ts`.
+*   The specified setup file (`test/apply-migrations.ts`) is responsible for applying these migrations to the fresh, in-memory D1 database instance created for the test run. This ensures tests run against the correct schema.
+*   No manual database setup or teardown is typically required within individual test files regarding the schema itself. 

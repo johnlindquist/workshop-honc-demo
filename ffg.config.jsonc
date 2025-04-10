@@ -1,0 +1,6 @@
+{
+  "defaultCommand": {
+    "include": ["src", "drizzle"]
+  },
+  "commands": {}
+}
