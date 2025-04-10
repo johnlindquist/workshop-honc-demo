@@ -1,6 +1,6 @@
 import { drizzle, type DrizzleD1Database } from "drizzle-orm/d1";
 import { eq, desc } from "drizzle-orm";
-import { createFiberplane } from "@fiberplane/hono";
+// import { createFiberplane } from "@fiberplane/hono";
 import { OpenAPIHono, createRoute, z } from "@hono/zod-openapi";
 import * as schema from "./db/schema";
 import { HTTPException } from 'hono/http-exception';
@@ -182,17 +182,30 @@ app
   .openapi(deleteNote, async (c) => {
     const db = c.get("db");
     const { id } = c.req.valid("param");
+    // console.log(`>>> DELETE /api/notes/${id}`); // Log entry - REMOVED
 
+    // Rely on global onError for exception handling
     const result = await db
       .delete(schema.notes)
       .where(eq(schema.notes.id, id))
       .run();
+    // console.log(`>>> DELETE result for ID ${id}:`, JSON.stringify(result)); // Log result - REMOVED
 
     if (result.changes === 0) {
+      // console.log(`>>> ID ${id} not found, throwing 404`); // Log branch taken - REMOVED
       throw new HTTPException(404, { message: 'Note not found' })
     }
 
+    // console.log(`>>> ID ${id} found and deleted, returning 200`); // Log branch taken - REMOVED
     return c.json({ ok: true });
+
+    /* // try-catch and reversed logic removed
+    try {
+      // ... code ...
+    } catch (err) {
+      // ... code ...
+    }
+    */
   })
   // Generate OpenAPI spec at /openapi.json
   .doc("/openapi.json", {
@@ -203,10 +216,12 @@ app
       description: "API for managing notes, built with Hono, OpenAPI, Node.js, Cloudflare D1.",
     },
   })
-  .use("/fp/*", createFiberplane({
-    app,
-    openapi: { url: "/openapi.json" },
-  }));
+/*
+.use("/fp/*", createFiberplane({ // Fiberplane UI for exploring API
+  app,
+  openapi: { url: "/openapi.json" },
+}));
+*/
 
 // Error Handler (Optional but recommended)
 app.onError((err, c) => {
