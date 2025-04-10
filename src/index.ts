@@ -169,7 +169,7 @@ app
       .where(eq(schema.notes.id, id))
       .run();
 
-    if (updateResult.changes === 0) {
+    if (updateResult.meta.changes === 0) {
       throw new HTTPException(404, { message: 'Note not found or no changes made' });
     }
 
@@ -191,7 +191,7 @@ app
       .run();
     // console.log(`>>> DELETE result for ID ${id}:`, JSON.stringify(result)); // Log result - REMOVED
 
-    if (result.changes === 0) {
+    if (result.meta.changes === 0) {
       // console.log(`>>> ID ${id} not found, throwing 404`); // Log branch taken - REMOVED
       throw new HTTPException(404, { message: 'Note not found' })
     }

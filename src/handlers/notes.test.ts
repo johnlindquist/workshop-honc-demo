@@ -120,7 +120,7 @@ describe('Notes API CRUD Operations', () => {
 
     // Delete the note
     const deleteRes = await makeRequest(`/api/notes/${createdNote.id}`, 'DELETE');
-    const deleteBody = await deleteRes.json();
+    const deleteBody = await deleteRes.json<{ ok: boolean }>();
 
     expect(deleteRes.status).toBe(200);
     expect(deleteBody.ok).toBe(true);
